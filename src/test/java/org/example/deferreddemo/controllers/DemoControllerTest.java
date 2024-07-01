@@ -13,6 +13,7 @@ import org.springframework.mock.web.MockAsyncContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
@@ -35,7 +36,7 @@ class DemoControllerTest {
   MockMvc mockMvc;
 
   @Test
-  void getResult() throws Exception {
+  void getResultForException() throws Exception {
     final ErrorResponse expectedResponse = new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An error occurred.");
     final String json = (new ObjectMapper()).writeValueAsString(expectedResponse);
 
@@ -45,6 +46,26 @@ class DemoControllerTest {
 
     for (var listener : context.getListeners()) {
       listener.onError(new AsyncEvent(context, new Exception("An error occurred.")));
+    }
+
+    mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpectAll(
+                    status().isInternalServerError(),
+                    content().json(json)
+            );
+  }
+
+  @Test
+  void getResultForAsyncRequestTimeoutException() throws Exception {
+    final ErrorResponse expectedResponse = new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Service Unavailable");
+    final String json = (new ObjectMapper()).writeValueAsString(expectedResponse);
+
+    final MvcResult mvcResult = mockMvc.perform(get("/")).andExpect(request().asyncStarted()).andReturn();
+    final MockAsyncContext context = (MockAsyncContext) mvcResult.getRequest().getAsyncContext();
+    assertThat(context).isNotNull();
+
+    for (var listener : context.getListeners()) {
+      listener.onError(new AsyncEvent(context, new AsyncRequestTimeoutException()));
     }
 
     mockMvc.perform(asyncDispatch(mvcResult))
